@@ -11,7 +11,7 @@ class ImageHandler(object):
         :param image_np: (np.array) cv2 image array (gbr)
         :return: (np.array) transformed image
         """
-        return image_np
+        return self.apply(image_np)
 
     def apply(self, image_np):
         """
