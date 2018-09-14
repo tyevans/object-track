@@ -65,7 +65,7 @@ def non_max_suppression(annotations, overlapThresh):
 
         if len(pick) == 1:
             anno = anno_group[pick[0]]
-            if anno.color != (0, 255, 0):
+            if anno.counter == 0:
                 all_annotations.append(anno)
             else:
                 anno.track_miss += 1

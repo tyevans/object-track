@@ -1,52 +1,13 @@
 from __future__ import division
 
-import queue
 import uuid
-from multiprocessing import Process, Queue
+from multiprocessing import Process, Pipe
 
 import cv2
 
-from detect.annotation import Rect
 from detect.object_detector import ObjectDetector
 from detect.util import non_max_suppression
 from handlers import ImageHandler
-
-
-class AnnotationProcessor(Process):
-
-    def __init__(self, graph_file: str, label_file: str, num_classes: int, frame_queue: Queue, annotation_queue: Queue,
-                 min_confidence: float = 0.5):
-        """ Dedicated image annotating process.  Sits off to the side
-
-        Pump `None` into the frame queue to exit the process
-
-        :param graph_file: (string) Path to the object detection model's frozen_inference_graph.pb
-        :param label_file: (string) Path to the object detection model's labels.pbtxt
-        :param num_classes: (int) Number of classes the model is trained on (this is 90 for a coco trained model)
-        :param frame_queue: (multiprocessing.Queue) queue where raw images will be provided
-        :param annotation_queue: (multiprocessing.Queue) queue where annotations will be returned
-        """
-        super(AnnotationProcessor, self).__init__()
-        self.graph_file = graph_file
-        self.label_file = label_file
-        self.num_classes = num_classes
-        self.frame_queue = frame_queue
-        self.annotation_queue = annotation_queue
-        self.min_confidence = min_confidence
-
-    def run(self):
-        # Create our object detector
-        detector = ObjectDetector(self.graph_file, self.label_file, self.num_classes)
-
-        while True:
-            # Get the next available frame
-            frame = self.frame_queue.get()
-            if frame is None:
-                break
-            # Annotate it
-            annotations = detector.annotate(frame, min_confidence=self.min_confidence)
-            # Pump it into the output queue
-            self.annotation_queue.put(annotations)
 
 
 class TrackingAnnotation(object):
@@ -57,22 +18,16 @@ class TrackingAnnotation(object):
         :param image_np: initial image
         :param annotation: `Annotation` instance
         """
-        self.uuid = str(uuid.uuid4())
+        self.uuid = uuid.uuid4()
         self.annotation = annotation
         self.height, self.width = image_np.shape[:2]
+        self.counter = 0
         self.color = (0, 0, 255)
-        self.tracker = cv2.TrackerMOSSE_create()
-        self.init_tracker(image_np)
 
-    def init_tracker(self, image_np):
         y1, x1, y2, x2 = self.annotation.rect.translate(self.height, self.width)
         self.track_window = (x1, y1, x2 - x1, y2 - y1)
-
-        self.tracker.clear()
+        self.tracker = cv2.TrackerMOSSE_create()
         self.tracker.init(image_np, self.track_window)
-
-        r = self.annotation.rect
-        self.start_rect = Rect(r.y1, r.x1, r.y2, r.x2)
         self.tracking = True
         self.track_miss = 0
 
@@ -95,6 +50,7 @@ class TrackingAnnotation(object):
 
             self.annotation.rect.y1 = y / self.height
             self.annotation.rect.y2 = (y + height) / self.height
+        self.counter += 1
 
     def __getattr__(self, item):
         """ Present so the underlying annotation object's content is accessible.
@@ -102,10 +58,47 @@ class TrackingAnnotation(object):
         return getattr(self.annotation, item)
 
 
+class AnnotationProcessor(Process):
+
+    def __init__(self, graph_file: str, label_file: str, num_classes: int, recv_frame: Pipe, send_anno: Pipe,
+                 min_confidence: float = 0.5):
+        """ Dedicated image annotating process.  Sits off to the side
+
+        Pump `None` into the frame queue to exit the process
+
+        :param graph_file: (string) Path to the object detection model's frozen_inference_graph.pb
+        :param label_file: (string) Path to the object detection model's labels.pbtxt
+        :param num_classes: (int) Number of classes the model is trained on (this is 90 for a coco trained model)
+        :param frame_queue: (multiprocessing.Queue) queue where raw images will be provided
+        :param annotation_queue: (multiprocessing.Queue) queue where annotations will be returned
+        """
+        super(AnnotationProcessor, self).__init__()
+        self.graph_file = graph_file
+        self.label_file = label_file
+        self.num_classes = num_classes
+        self.recv_frame = recv_frame
+        self.send_anno = send_anno
+        self.min_confidence = min_confidence
+
+    def run(self):
+        # Create our object detector
+        detector = ObjectDetector(self.graph_file, self.label_file, self.num_classes)
+
+        while True:
+            # Get the next available frame
+            frame = self.recv_frame.recv()
+            if frame is None:
+                break
+            # Annotate it
+            annotations = detector.annotate(frame, min_confidence=self.min_confidence)
+            # Pump it into the output queue
+            self.send_anno.send(annotations)
+
+
 class ImageAnnotator(ImageHandler):
 
     def __init__(self, graph: str, label_file: str, num_classes: int,
-                 crop_dir: str=None, min_confidence: float=0.5, max_overlay: float=0.50):
+                 crop_dir: str = None, min_confidence: float = 0.5, max_overlay: float = 0.50):
         """ Annotates images using an `AnnotationProcessor` subprocess
 
         :param graph_file: (string) Path to the object detection model's frozen_inference_graph.pb
@@ -117,38 +110,36 @@ class ImageAnnotator(ImageHandler):
         self.crop_dir = crop_dir
         self.min_confidence = min_confidence
         self.max_overlay = max_overlay
-        self.frame_queue = Queue()
-        self.annotation_queue = Queue()
-        self.processor = AnnotationProcessor(graph, label_file, num_classes, self.frame_queue,
-                                             self.annotation_queue, min_confidence=min_confidence)
-        self.processor.start()
-        self.prev_annotations = []
         self.annotations = []
+
+        self.send_frame, self.recv_frame = Pipe()
+        self.send_anno, self.recv_anno = Pipe()
+        self.processor = AnnotationProcessor(graph, label_file, num_classes, self.recv_frame,
+                                             self.send_anno, min_confidence=min_confidence)
+        self.processor.start()
 
     def apply_first(self, image_np):
         self.anno_frame = image_np.copy()
-        self.frame_queue.put(image_np)
+        self.send_frame.send(image_np)
         return image_np
 
     def apply(self, image_np):
-        try:
-            annotations = [TrackingAnnotation(self.anno_frame, a) for a in self.annotation_queue.get_nowait()]
+        if self.recv_anno.poll():
+            annotations = [TrackingAnnotation(self.anno_frame, a) for a in self.recv_anno.recv()]
+
             self.annotations = [a for a in self.annotations if a.tracking]
             self.annotations = [a for a in non_max_suppression(annotations + self.annotations, self.max_overlay)]
-        except queue.Empty:
+            self.anno_frame = image_np.copy()
+            self.send_frame.send(image_np)
+        else:
             for annotation in self.annotations:
                 annotation.step(image_np)
-        else:
-            self.anno_frame = image_np.copy()
-            self.frame_queue.put(image_np)
-        self.draw_annotations(image_np)
+
+        for annotation in self.annotations:
+            if annotation.score >= self.min_confidence:
+                annotation.draw(image_np, annotation.color)
 
         return image_np
 
     def close(self):
-        self.frame_queue.put(None)
-
-    def draw_annotations(self, image_np):
-        for annotation in self.annotations:
-            if annotation.score >= self.min_confidence:
-                annotation.draw(image_np, annotation.color)
+        self.send_frame.send(None)
