@@ -104,7 +104,8 @@ class TrackingAnnotation(object):
 
 class ImageAnnotator(ImageHandler):
 
-    def __init__(self, graph, label_file, num_class, crop_dir=None, min_confidence=0.5):
+    def __init__(self, graph: str, label_file: str, num_classes: int,
+                 crop_dir: str=None, min_confidence: float=0.5, max_overlay: float=0.50):
         """ Annotates images using an `AnnotationProcessor` subprocess
 
         :param graph_file: (string) Path to the object detection model's frozen_inference_graph.pb
@@ -115,9 +116,10 @@ class ImageAnnotator(ImageHandler):
         """
         self.crop_dir = crop_dir
         self.min_confidence = min_confidence
+        self.max_overlay = max_overlay
         self.frame_queue = Queue()
         self.annotation_queue = Queue()
-        self.processor = AnnotationProcessor(graph, label_file, num_class, self.frame_queue,
+        self.processor = AnnotationProcessor(graph, label_file, num_classes, self.frame_queue,
                                              self.annotation_queue, min_confidence=min_confidence)
         self.processor.start()
         self.prev_annotations = []
@@ -132,7 +134,7 @@ class ImageAnnotator(ImageHandler):
         try:
             annotations = [TrackingAnnotation(self.anno_frame, a) for a in self.annotation_queue.get_nowait()]
             self.annotations = [a for a in self.annotations if a.tracking]
-            self.annotations = [a for a in non_max_suppression(annotations + self.annotations, 0.90)]
+            self.annotations = [a for a in non_max_suppression(annotations + self.annotations, self.max_overlay)]
         except queue.Empty:
             for annotation in self.annotations:
                 annotation.step(image_np)
