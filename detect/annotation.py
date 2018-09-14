@@ -29,15 +29,6 @@ class Rect(object):
     def area(self):
         return (self.x2 - self.x1) * (self.y2 - self.y1)
 
-    def average(self, other):
-        return Rect(
-            (self.y1 + other.y1) / 2,
-            (self.x1 + other.x1) / 2,
-            (self.y2 + other.y2) / 2,
-            (self.x2 + other.x2) / 2,
-
-        )
-
     def overlap(self, other):
         area = self.area()
         dx = min(self.x2, other.x2) - max(self.x1, other.x1)
@@ -53,11 +44,11 @@ class Rect(object):
         union = self.union(other)
         return (self.overlap(other) or 0) / union
 
-    def __str__(self):
-        return "{}, {}, {}, {}".format(self.x1, self.y1, self.x2, self.y2)
-
     def to_array(self):
         return np.array([self.x1, self.y1, self.x2, self.y2])
+
+    def __str__(self):
+        return "{}, {}, {}, {}".format(self.x1, self.y1, self.x2, self.y2)
 
 
 class Mask(object):

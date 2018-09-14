@@ -76,10 +76,6 @@ class TrackingAnnotation(object):
         self.tracking = True
         self.track_miss = 0
 
-    def visible(self):
-        rect = self.annotation.rect
-        return (0 < rect.x2 or rect.x1 < 1.0) and (0 < rect.y2 or rect.y1 < 1.0)
-
     def step(self, image_np):
         """ Updates the wrapped annotation based on the data present in `image_np`
 
@@ -136,7 +132,7 @@ class ImageAnnotator(ImageHandler):
         try:
             annotations = [TrackingAnnotation(self.anno_frame, a) for a in self.annotation_queue.get_nowait()]
             self.annotations = [a for a in self.annotations if a.tracking]
-            self.annotations = [a for a in non_max_suppression(annotations + self.annotations, 0.50)]
+            self.annotations = [a for a in non_max_suppression(annotations + self.annotations, 0.90)]
         except queue.Empty:
             for annotation in self.annotations:
                 annotation.step(image_np)
