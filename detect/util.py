@@ -63,7 +63,7 @@ def non_max_suppression(annotations, overlapThresh):
             idxs = np.delete(idxs, np.concatenate(([last],
                                                    np.where(overlap > overlapThresh)[0])))
 
-        if len(pick) <= 1:
+        if len(pick) == 1:
             anno = anno_group[pick[0]]
             if anno.color != (0, 255, 0):
                 all_annotations.append(anno)
@@ -78,3 +78,4 @@ def non_max_suppression(annotations, overlapThresh):
                 if anno not in all_annotations:
                     all_annotations.append(anno)
     return all_annotations
+1

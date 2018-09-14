@@ -1,25 +1,21 @@
 from __future__ import division
 
-import os
 import queue
-import time
 import uuid
 from multiprocessing import Process, Queue
 
 import cv2
-import numpy as np
-from scipy.spatial import distance
 
 from detect.annotation import Rect
 from detect.object_detector import ObjectDetector
-from detect.util import non_max_suppression_fast
+from detect.util import non_max_suppression
 from handlers import ImageHandler
 
 
 class AnnotationProcessor(Process):
 
     def __init__(self, graph_file: str, label_file: str, num_classes: int, frame_queue: Queue, annotation_queue: Queue,
-                 min_confidence: int = 0.5):
+                 min_confidence: float = 0.5):
         """ Dedicated image annotating process.  Sits off to the side
 
         Pump `None` into the frame queue to exit the process
@@ -64,56 +60,38 @@ class TrackingAnnotation(object):
         self.uuid = str(uuid.uuid4())
         self.annotation = annotation
         self.height, self.width = image_np.shape[:2]
-        # self.tracker = cv2.TrackerMedianFlow_create()
         self.color = (0, 0, 255)
         self.tracker = cv2.TrackerMOSSE_create()
-        # self.tracker = cv2.TrackerCSRT_create()
         self.init_tracker(image_np)
-        self.track_miss = 0
 
     def init_tracker(self, image_np):
         y1, x1, y2, x2 = self.annotation.rect.translate(self.height, self.width)
         self.track_window = (x1, y1, x2 - x1, y2 - y1)
+
         self.tracker.clear()
         self.tracker.init(image_np, self.track_window)
+
         r = self.annotation.rect
         self.start_rect = Rect(r.y1, r.x1, r.y2, r.x2)
         self.tracking = True
-        self.miss_track = 0
-        self.centroids = [
-            np.array([self.rect.x2 - self.rect.x1, self.rect.y2 - self.rect.y1])
-        ]
+        self.track_miss = 0
 
     def visible(self):
         rect = self.annotation.rect
         return (0 < rect.x2 or rect.x1 < 1.0) and (0 < rect.y2 or rect.y1 < 1.0)
-
-    def has_moved(self):
-        c1 = self.centroids[-1]
-        for c2 in self.centroids[-1:-4]:
-            dist = distance.euclidean(c1, c2)
-            if np.max(dist) > 0.05:
-                return True
-        return False
 
     def step(self, image_np):
         """ Updates the wrapped annotation based on the data present in `image_np`
 
         :param image_np: the current image frame
         """
-        self.color = (0, 255, 0)
-        # if not self.has_moved():
-        #     self.tracking = False
-
         if not self.tracking:
             return
 
-        self.tracking, track_window = self.tracker.update(image_np)
+        self.color = (0, 255, 0)
+
+        self.tracking, self.track_window = self.tracker.update(image_np)
         if self.tracking:
-            self.centroids.append(
-                np.array([self.rect.x2 - self.rect.x1, self.rect.y2 - self.rect.y1])
-            )
-            self.track_window = track_window
             x, y, width, height = self.track_window
 
             self.annotation.rect.x1 = x / self.width
@@ -143,30 +121,25 @@ class ImageAnnotator(ImageHandler):
         self.min_confidence = min_confidence
         self.frame_queue = Queue()
         self.annotation_queue = Queue()
-        self.processor = AnnotationProcessor(graph, label_file, num_class, self.frame_queue, self.annotation_queue,
-                                             min_confidence=min_confidence)
+        self.processor = AnnotationProcessor(graph, label_file, num_class, self.frame_queue,
+                                             self.annotation_queue, min_confidence=min_confidence)
         self.processor.start()
         self.prev_annotations = []
         self.annotations = []
-        self.lag_frames = []
 
     def apply_first(self, image_np):
         self.anno_frame = image_np.copy()
         self.frame_queue.put(image_np)
-        self.last_annotation = time.time()
         return image_np
 
     def apply(self, image_np):
-        print(len(self.annotations))
         try:
             annotations = [TrackingAnnotation(self.anno_frame, a) for a in self.annotation_queue.get_nowait()]
             self.annotations = [a for a in self.annotations if a.tracking]
             self.annotations = [a for a in non_max_suppression(annotations + self.annotations, 0.50)]
-
         except queue.Empty:
             for annotation in self.annotations:
                 annotation.step(image_np)
-
         else:
             self.anno_frame = image_np.copy()
             self.frame_queue.put(image_np)
@@ -181,15 +154,3 @@ class ImageAnnotator(ImageHandler):
         for annotation in self.annotations:
             if annotation.score >= self.min_confidence:
                 annotation.draw(image_np, annotation.color)
-
-    def crop_annotations(self):
-        frame_time = time.time()
-        height, width = self.anno_frame.shape[:2]
-        for i, annotation in enumerate(self.annotations):
-            y1, x1, y2, x2 = annotation.rect.translate(height, width)
-            anno_height = y2 - y1
-            anno_width = x2 - x1
-            if annotation.score >= self.min_confidence and anno_height * anno_width >= 400:
-                label = "{}_{}.jpg".format(annotation.label['name'], int(frame_time))
-                path = os.path.join(self.crop_dir, label)
-                cv2.imwrite(path, annotation.crop(self.anno_frame))
