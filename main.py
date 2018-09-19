@@ -5,8 +5,7 @@ import cv2
 from image_handlers import VideoDisplay
 from image_handlers.annotation import AnnotatingImageHandler
 from image_handlers.avi import AVIOutput
-from image_handlers.edge_detect import LaplacianEnhancer, SobelYEnhancer
-from image_handlers.equalization import CLAHE_GRAY, CLAHE, HistogramNormalize
+from image_handlers.fps import FPSCounter
 
 
 def get_options():
@@ -58,8 +57,8 @@ class VideoSource(object):
 if __name__ == "__main__":
     options = get_options()
 
-    # anno = AnnotatingImageHandler(options.graph, options.label_file, options.num_classes,
-    #                               min_confidence=options.min_confidence, sample_delay=100)
+    anno = AnnotatingImageHandler(options.graph, options.label_file, options.num_classes,
+                                  min_confidence=options.min_confidence, sample_delay=100)
 
     pipeline = [
         # CannyEdgeEnhancer(),
@@ -69,9 +68,12 @@ if __name__ == "__main__":
         # HistogramNormalize(),
         # CLAHE(),
         # CLAHE_GRAY(),
-        # anno,
+        anno,
         VideoDisplay("Frame"),
     ]
+
+    if options.show_fps:
+        pipeline.append(FPSCounter())
 
     if options.avi_out:
         pipeline.append(AVIOutput(options.avi_out, width=options.i_width, height=options.i_height, frame_rate=15.0))

@@ -1,5 +1,4 @@
 import cv2
-import numpy as np
 
 from image_handlers import ImageHandler
 
@@ -12,4 +11,3 @@ class ChannelFilter(ImageHandler):
     def apply(self, image_np):
         channel = image_np[:, :, self.channel_no]
         return cv2.cvtColor(channel, cv2.COLOR_GRAY2BGR)
-

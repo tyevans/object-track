@@ -1,7 +1,7 @@
 import cv2
 import numpy as np
 
-from detect.types import Mask
+from annotate.mask import Mask
 from image_handlers import ImageHandler
 
 
