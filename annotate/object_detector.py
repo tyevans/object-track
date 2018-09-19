@@ -1,11 +1,13 @@
 import os
+from multiprocessing import Pipe
+from multiprocessing import Process
 
 import numpy as np
 import tensorflow as tf
 from object_detection.utils import label_map_util
 from object_detection.utils import ops as utils_ops
 
-from detect.annotation import Annotation, MaskedAnnotation
+from annotate.annotation import Annotation, MaskedAnnotation
 
 
 class ObjectDetector:
@@ -94,22 +96,38 @@ class ObjectDetector:
         self.close()
 
 
-class AggregateObjectDetector:
+class AnnotationProcessor(Process):
 
-    def __init__(self, detectors=None):
-        self.detectors = detectors or []
+    def __init__(self, graph_file: str, label_file: str, num_classes: int, recv_frame: Pipe, send_anno: Pipe,
+                 min_confidence: float = 0.5):
+        """ Dedicated image annotating process.  Sits off to the side
 
-    @classmethod
-    def load_dir(cls, models_dir, detector_cls=ObjectDetector):
-        detectors = []
-        for fileentry in os.scandir(models_dir):
-            if fileentry.is_dir():
-                obj_detector = detector_cls.load_dir(fileentry.path, 90)
-                detectors.append(obj_detector)
+        Pump `None` into the frame queue to exit the process
 
-        return cls(detectors)
+        :param graph_file: (string) Path to the object detection model's frozen_inference_graph.pb
+        :param label_file: (string) Path to the object detection model's labels.pbtxt
+        :param num_classes: (int) Number of classes the model is trained on (this is 90 for a coco trained model)
+        :param frame_queue: (multiprocessing.Queue) queue where raw images will be provided
+        :param annotation_queue: (multiprocessing.Queue) queue where annotations will be returned
+        """
+        super(AnnotationProcessor, self).__init__()
+        self.graph_file = graph_file
+        self.label_file = label_file
+        self.num_classes = num_classes
+        self.recv_frame = recv_frame
+        self.send_anno = send_anno
+        self.min_confidence = min_confidence
 
-    def iter_annotate(self, image_np):
-        for detector in self.detectors:
-            annotations = detector.annotate(image_np)
-            yield annotations
+    def run(self):
+        # Create our object detector
+        detector = ObjectDetector(self.graph_file, self.label_file, self.num_classes)
+
+        while True:
+            # Get the next available frame
+            frame = self.recv_frame.recv()
+            if frame is None:
+                break
+            # Annotate it
+            annotations = detector.annotate(frame, min_confidence=self.min_confidence)
+            # Pump it into the output queue
+            self.send_anno.send(annotations)

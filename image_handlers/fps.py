@@ -1,15 +1,12 @@
 import cv2
 
-from handlers import ImageHandler
+from image_handlers import ImageHandler
 
 
 class FPSCounter(ImageHandler):
 
     def __init__(self):
         self.timer = cv2.getTickCount()
-
-    def apply_first(self, image_np):
-        return self.apply(image_np)
 
     def apply(self, image_np):
         timer = cv2.getTickCount()

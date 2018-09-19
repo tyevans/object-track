@@ -2,10 +2,11 @@ import argparse
 
 import cv2
 
-from handlers.annotation import ImageAnnotator
-from handlers.avi import AVIOutput
-from handlers.background import BackgroundSubtractor
-from handlers.fps import FPSCounter
+from image_handlers import VideoDisplay
+from image_handlers.annotation import AnnotatingImageHandler
+from image_handlers.avi import AVIOutput
+from image_handlers.edge_detect import LaplacianEnhancer, SobelYEnhancer
+from image_handlers.equalization import CLAHE_GRAY, CLAHE, HistogramNormalize
 
 
 def get_options():
@@ -18,6 +19,9 @@ def get_options():
     parser.add_argument('--avi_out', default=None)
     parser.add_argument('--crop_dir', default=None)
     parser.add_argument('--subtract_bg', action="store_true", default=False)
+
+    parser.add_argument('--i_width', default=640, type=int)
+    parser.add_argument('--i_height', default=480, type=int)
     return parser.parse_args()
 
 
@@ -32,17 +36,11 @@ class VideoSource(object):
                 self._source.set(setting, value)
 
     def run_forever(self):
-        ret, frame = self._source.read()
-        for handler in self.processing_pipeline:
-            frame = handler.apply_first(frame)
-
         while (True):
             ret, frame = self._source.read()
 
             for handler in self.processing_pipeline:
                 frame = handler.apply(frame)
-
-            cv2.imshow('frame', frame)
             try:
                 if cv2.waitKey(1) & 0xFF == ord('q'):
                     for handler in self.processing_pipeline:
@@ -57,35 +55,37 @@ class VideoSource(object):
         cv2.destroyAllWindows()
 
 
-def main(options):
-    pipeline = []
+if __name__ == "__main__":
+    options = get_options()
 
-    if options.subtract_bg:
-        pipeline.append(BackgroundSubtractor())
+    # anno = AnnotatingImageHandler(options.graph, options.label_file, options.num_classes,
+    #                               min_confidence=options.min_confidence, sample_delay=100)
 
-    pipeline.append(
-        ImageAnnotator(options.graph, options.label_file, options.num_classes,
-                       options.crop_dir, options.min_confidence)
-    )
-
-    if options.show_fps:
-        pipeline.append(FPSCounter())
+    pipeline = [
+        # CannyEdgeEnhancer(),
+        # LaplacianEnhancer(),
+        # SobelXEnhancer(),
+        # SobelYEnhancer(),
+        # HistogramNormalize(),
+        # CLAHE(),
+        # CLAHE_GRAY(),
+        # anno,
+        VideoDisplay("Frame"),
+    ]
 
     if options.avi_out:
-        pipeline.append(AVIOutput(options.avi_out))
+        pipeline.append(AVIOutput(options.avi_out, width=options.i_width, height=options.i_height, frame_rate=15.0))
 
     source = VideoSource(
         source=0,
         processing_pipeline=pipeline,
         source_capabilities={
-            cv2.CAP_PROP_FRAME_WIDTH: 640,
-            cv2.CAP_PROP_FRAME_HEIGHT: 480
+            cv2.CAP_PROP_FRAME_WIDTH: options.i_width,
+            cv2.CAP_PROP_FRAME_HEIGHT: options.i_height,
+            cv2.CAP_PROP_AUTO_EXPOSURE: 1,
+            cv2.CAP_PROP_AUTOFOCUS: 1,
+            # cv2.CAP_PROP_BRIGHTNESS: 0.5,
+            # cv2.CAP_PROP_CONTRAST: 0.5,
         }
     )
-
     source.run_forever()
-
-
-if __name__ == "__main__":
-    options = get_options()
-    main(options)

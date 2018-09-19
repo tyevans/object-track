@@ -1,7 +1,8 @@
 import cv2
 import numpy as np
 
-from handlers import ImageHandler
+from detect.types import Mask
+from image_handlers import ImageHandler
 
 
 class BackgroundSubtractor(ImageHandler):
@@ -12,9 +13,6 @@ class BackgroundSubtractor(ImageHandler):
         self.annotations = None
         self.subtractor = cv2.createBackgroundSubtractorMOG2()
         self.kernel = np.ones((5, 5), np.uint8)
-
-    def apply_first(self, image_np):
-        return self.apply(image_np)
 
     def apply(self, image_np):
         self.subtractor.apply(image_np)
