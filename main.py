@@ -17,8 +17,6 @@ def get_options():
     parser.add_argument('--show_fps', action="store_true", default=False)
     parser.add_argument('--avi_out', default=None)
     parser.add_argument('--crop_dir', default=None)
-    parser.add_argument('--subtract_bg', action="store_true", default=False)
-
     parser.add_argument('--i_width', default=640, type=int)
     parser.add_argument('--i_height', default=480, type=int)
     return parser.parse_args()
@@ -57,19 +55,9 @@ class VideoSource(object):
 if __name__ == "__main__":
     options = get_options()
 
-    anno = AnnotatingImageHandler(options.graph, options.label_file, options.num_classes,
-                                  min_confidence=options.min_confidence, sample_delay=100)
-
     pipeline = [
-        # CannyEdgeEnhancer(),
-        # LaplacianEnhancer(),
-        # SobelXEnhancer(),
-        # SobelYEnhancer(),
-        # HistogramNormalize(),
-        # CLAHE(),
-        # CLAHE_GRAY(),
-        anno,
-        VideoDisplay("Frame"),
+        AnnotatingImageHandler(options.graph, options.label_file, options.num_classes,
+                               min_confidence=options.min_confidence, sample_delay=500)
     ]
 
     if options.show_fps:
@@ -77,6 +65,8 @@ if __name__ == "__main__":
 
     if options.avi_out:
         pipeline.append(AVIOutput(options.avi_out, width=options.i_width, height=options.i_height, frame_rate=15.0))
+
+    pipeline.append(VideoDisplay("Frame"))
 
     source = VideoSource(
         source=0,
