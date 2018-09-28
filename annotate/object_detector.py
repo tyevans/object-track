@@ -1,3 +1,6 @@
+import time
+
+import cv2
 import os
 from multiprocessing import Pipe
 from multiprocessing import Process
@@ -11,6 +14,9 @@ from annotate.annotation import Annotation, MaskedAnnotation
 
 
 class ObjectDetector:
+    _tensor_dict = None
+    default_shape = (640, 480)
+
     def __init__(self, graph_pb_file, label_file, num_classes):
         self.graph_pb_file = graph_pb_file
         self.label_file = label_file
@@ -27,11 +33,7 @@ class ObjectDetector:
                 od_graph_def.ParseFromString(serialized_graph)
                 tf.import_graph_def(od_graph_def, name='')
 
-            config = tf.ConfigProto()
-            config.intra_op_parallelism_threads = 8
-            config.inter_op_parallelism_threads = 8
-
-            self.session = tf.Session(config=config)
+            self.session = tf.Session()
 
     @classmethod
     def load_dir(cls, graph_dir, num_classes):
@@ -39,61 +41,60 @@ class ObjectDetector:
         label_file = os.path.join(graph_dir, 'labels.pbtxt')
         return cls(graph_pb_file, label_file, num_classes)
 
-    def annotate(self, image_np, min_confidence=0.5):
-        with self.detection_graph.as_default():
-            # Get handles to input and output tensors
-            graph = tf.get_default_graph()
+    @property
+    def tensor_dict(self):
+        if self._tensor_dict is None:
+            graph = self.detection_graph
 
             ops = graph.get_operations()
             all_tensor_names = {output.name for op in ops for output in op.outputs}
-            tensor_dict = {}
+            self._tensor_dict = {}
             for key in [
                 'num_detections', 'detection_boxes', 'detection_scores',
                 'detection_classes', 'detection_masks'
             ]:
                 tensor_name = key + ':0'
                 if tensor_name in all_tensor_names:
-                    tensor_dict[key] = tf.get_default_graph().get_tensor_by_name(tensor_name)
-            if 'detection_masks' in tensor_dict:
+                    self._tensor_dict[key] = tf.get_default_graph().get_tensor_by_name(tensor_name)
+            if 'detection_masks' in self._tensor_dict:
                 # The following processing is only for single image
-                detection_boxes = tf.squeeze(tensor_dict['detection_boxes'], [0])
-                detection_masks = tf.squeeze(tensor_dict['detection_masks'], [0])
+                detection_boxes = tf.squeeze(self._tensor_dict['detection_boxes'], [0])
+                detection_masks = tf.squeeze(self._tensor_dict['detection_masks'], [0])
                 # Reframe is required to translate mask from box coordinates to image coordinates and fit the image size.
-                real_num_detection = tf.cast(tensor_dict['num_detections'][0], tf.int32)
+                real_num_detection = tf.cast(self._tensor_dict['num_detections'][0], tf.int32)
                 detection_boxes = tf.slice(detection_boxes, [0, 0], [real_num_detection, -1])
                 detection_masks = tf.slice(detection_masks, [0, 0, 0], [real_num_detection, -1, -1])
-                detection_masks_reframed = utils_ops.reframe_box_masks_to_image_masks(
-                    detection_masks, detection_boxes, image_np.shape[0], image_np.shape[1])
-                detection_masks_reframed = tf.cast(
-                    tf.greater(detection_masks_reframed, 0.5), tf.uint8)
+                detection_masks_reframed = utils_ops.reframe_box_masks_to_image_masks(detection_masks, detection_boxes, self.default_shape[1], self.default_shape[0])
+                detection_masks_reframed = tf.cast(tf.greater(detection_masks_reframed, 0.5), tf.uint8)
                 # Follow the convention by adding back the batch dimension
-                tensor_dict['detection_masks'] = tf.expand_dims(
-                    detection_masks_reframed, 0)
-            image_tensor = graph.get_tensor_by_name('image_tensor:0')
+                self._tensor_dict['detection_masks'] = tf.expand_dims(detection_masks_reframed, 0)
+        return self._tensor_dict
 
-            # Run inference
-            output_dict = self.session.run(tensor_dict,
-                                           feed_dict={image_tensor: np.expand_dims(image_np, 0)})
+    def annotate(self, image_np, min_confidence=0.5):
+        # with self.detection_graph.as_default():
+        # Get handles to input and output tensors
+        start = time.time()
+        with self.detection_graph.as_default():
+            image_tensor = self.detection_graph.get_tensor_by_name('image_tensor:0')
+            output_dict = self.session.run(self.tensor_dict, feed_dict={image_tensor: np.expand_dims(image_np, 0)})
+        print("Inference time", time.time() - start)
 
-            num_detections = int(output_dict['num_detections'][0])
-            classes = output_dict['detection_classes'][0].astype(np.uint8)
-            labels = [self.category_index.get(x, {"name": 'Unknown', "id": x}) for x in classes]
-            boxes = output_dict['detection_boxes'][0].tolist()
-            scores = output_dict['detection_scores'][0]
-            if 'detection_masks' in output_dict:
-                masks = output_dict['detection_masks'][0]
-                annotations = MaskedAnnotation.from_results(num_detections, labels, scores, boxes, masks,
-                                                            min_confidence=min_confidence)
-            else:
-                annotations = Annotation.from_results(num_detections, labels, scores, boxes,
-                                                      min_confidence=min_confidence)
+        num_detections = int(output_dict['num_detections'][0])
+        classes = output_dict['detection_classes'][0].astype(np.uint8)
+        labels = [self.category_index.get(x, {"name": 'Unknown', "id": x}) for x in classes]
+        boxes = output_dict['detection_boxes'][0].tolist()
+        scores = output_dict['detection_scores'][0]
+        if 'detection_masks' in output_dict:
+            masks = output_dict['detection_masks'][0]
+            annotations = MaskedAnnotation.from_results(num_detections, labels, scores, boxes, masks,
+                                                        min_confidence=min_confidence)
+        else:
+            annotations = Annotation.from_results(num_detections, labels, scores, boxes,
+                                                  min_confidence=min_confidence)
         return annotations
 
     def close(self):
-        self.session.close()
-
-    def __del__(self):
-        self.close()
+        pass
 
 
 class AnnotationProcessor(Process):

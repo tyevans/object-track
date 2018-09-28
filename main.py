@@ -3,7 +3,7 @@ import argparse
 import cv2
 
 from image_handlers import VideoDisplay
-from image_handlers.annotation import AnnotatingImageHandler
+from image_handlers.annotation import AnnotatingImageHandler, SimpleAnnotatingImageHandler
 from image_handlers.avi import AVIOutput
 from image_handlers.fps import FPSCounter
 
@@ -57,7 +57,7 @@ if __name__ == "__main__":
 
     pipeline = [
         AnnotatingImageHandler(options.graph, options.label_file, options.num_classes,
-                               min_confidence=options.min_confidence, sample_delay=500)
+                               min_confidence=options.min_confidence, sample_delay=30)
     ]
 
     if options.show_fps:

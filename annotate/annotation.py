@@ -52,8 +52,10 @@ class MaskedAnnotation(Annotation):
         transparent = self.mask.as_transparency(image_np)
         return self.rect.crop(transparent)
 
-    def draw(self, image_np, color, draw_label=True, draw_rect=False):
+    def draw(self, image_np, color, draw_label=True, draw_rect=True):
         self.mask.draw(image_np, color)
+        if draw_rect:
+            self.rect.draw(image_np, color)
 
     @classmethod
     def from_results(cls, num_detections, labels, scores, boxes, masks=None, min_confidence=0.5):
@@ -62,5 +64,8 @@ class MaskedAnnotation(Annotation):
         zipped = zip(labels[:num_detections], scores[:num_detections], boxes[:num_detections], masks[:num_detections])
         for i, (label, score, box, mask) in enumerate(zipped):
             if score >= min_confidence:
-                annotations.append(cls(label, score, box))
+                annotations.append(cls(label, score, box, mask))
         return annotations
+
+    def __str__(self):
+        return "{} :: {}".format(self.label, self.score)

@@ -13,6 +13,7 @@ class VideoAnnotator(object):
         self.annotations = []
 
         self.sample_delay = sample_delay
+        self.sent = False
         self._sample_tick = 0
         self._last_time = time.time()
 
@@ -29,12 +30,18 @@ class VideoAnnotator(object):
 
         if self.recv_anno.poll():
             updated = True
+            self.sent = False
             self.annotations = self.recv_anno.recv()
 
         self._sample_tick -= dt
         if self._sample_tick <= 0:
-            self._sample_tick += self.sample_delay
-            self.send_frame.send(image_np)
+            if self.sent:
+                self._sample_tick = 0
+            else:
+                self.sent = True
+                self._sample_tick += self.sample_delay
+
+                self.send_frame.send(image_np)
         return updated
 
     def close(self):
