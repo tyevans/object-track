@@ -42,3 +42,15 @@ class BackgroundExtractor(ImageHandler):
 
         self.motion_mask = Mask(np.logical_not(motion_mask))
         return self.motion_mask.apply(image_np)
+
+class FrameAverager(ImageHandler):
+    def __init__(self, width, height, history=20):
+        self.history = history
+        self.frame_index = 0
+        self.frame_stack = np.zeros([history, height, width, 3])
+
+    def apply(self, image_np):
+        self.frame_stack[self.frame_index] = image_np
+        self.frame_index = (self.frame_index + 1) % self.history
+        avg = np.mean(self.frame_stack, axis=0)
+        return avg.astype(np.uint8)

@@ -27,22 +27,25 @@ class VideoAnnotator(object):
         now = time.time()
         dt = now - self._last_time
         updated = False
+        queued = False
 
         if self.recv_anno.poll():
             updated = True
             self.sent = False
             self.annotations = self.recv_anno.recv()
 
+
         self._sample_tick -= dt
         if self._sample_tick <= 0:
             if self.sent:
                 self._sample_tick = 0
             else:
+                queued = True
                 self.sent = True
                 self._sample_tick += self.sample_delay
 
                 self.send_frame.send(image_np)
-        return updated
+        return updated, queued
 
     def close(self):
         self.send_frame.send(None)

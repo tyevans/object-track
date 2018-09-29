@@ -3,8 +3,8 @@ import argparse
 import cv2
 
 from image_handlers import VideoDisplay
-from image_handlers.annotation import AnnotatingImageHandler, SimpleAnnotatingImageHandler
 from image_handlers.avi import AVIOutput
+from image_handlers.creative import Cartoonify
 from image_handlers.fps import FPSCounter
 
 
@@ -56,15 +56,18 @@ if __name__ == "__main__":
     options = get_options()
 
     pipeline = [
-        AnnotatingImageHandler(options.graph, options.label_file, options.num_classes,
-                               min_confidence=options.min_confidence, sample_delay=30)
+        # TrackingSuprise(options.graph, options.label_file, options.num_classes,
+        #                        min_confidence=options.min_confidence, sample_delay=0)
+        Cartoonify(4),
+        # BilateralFilter()
+        # FrameAverager(options.i_width, options.i_height, history=20)
     ]
 
     if options.show_fps:
         pipeline.append(FPSCounter())
 
     if options.avi_out:
-        pipeline.append(AVIOutput(options.avi_out, width=options.i_width, height=options.i_height, frame_rate=15.0))
+        pipeline.append(AVIOutput(options.avi_out, width=options.i_width, height=options.i_height, frame_rate=7.0))
 
     pipeline.append(VideoDisplay("Frame"))
 

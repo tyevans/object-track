@@ -41,6 +41,8 @@ class Annotation(object):
     def crop(self, image_np):
         return self.rect.crop(image_np)
 
+    def __str__(self):
+        return "{} :: {}".format(self.label, self.score)
 
 class MaskedAnnotation(Annotation):
 
