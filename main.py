@@ -3,8 +3,13 @@ import argparse
 import cv2
 
 from image_handlers import VideoDisplay
+from image_handlers.annotation import Annotator, TrackingSuprise, MaskingAnnotator
 from image_handlers.avi import AVIOutput
+from image_handlers.background import FrameAverager
+from image_handlers.color import BilateralFilter
 from image_handlers.creative import Cartoonify
+from image_handlers.denoise import Denoise
+from image_handlers.edge_detect import Laplacian
 from image_handlers.fps import FPSCounter
 
 
@@ -56,19 +61,20 @@ if __name__ == "__main__":
     options = get_options()
 
     pipeline = [
-        # TrackingSuprise(options.graph, options.label_file, options.num_classes,
-        #                        min_confidence=options.min_confidence, sample_delay=0)
-        Cartoonify(4),
+        MaskingAnnotator(options.graph, options.label_file, options.num_classes,
+                               min_confidence=options.min_confidence, sample_delay=0, width=options.i_width, height=options.i_height)
+        # Denoise(),
+        #Cartoonify(2),
+        # Laplacian(),
         # BilateralFilter()
-        # FrameAverager(options.i_width, options.i_height, history=20)
+#        FrameAverager(options.i_width, options.i_height, history=30)
     ]
 
     if options.show_fps:
         pipeline.append(FPSCounter())
 
     if options.avi_out:
-        pipeline.append(AVIOutput(options.avi_out, width=options.i_width, height=options.i_height, frame_rate=7.0))
-
+        pipeline.append(AVIOutput(options.avi_out, width=options.i_width, height=options.i_height, frame_rate=15.0))
     pipeline.append(VideoDisplay("Frame"))
 
     source = VideoSource(

@@ -17,9 +17,11 @@ class Cartoonify(ImageHandler):
         gray = cv2.cvtColor(image_np, cv2.COLOR_BGR2GRAY)
         edges = cv2.Laplacian(gray, cv2.CV_64F)
         thresh = cv2.threshold(edges, 8, 255, cv2.THRESH_BINARY_INV)[1].astype(np.uint8)
+        thresh = cv2.erode(thresh, (1, 1), iterations=1)
         mask = Mask(thresh)
         return mask.apply(
             self.quant.apply(
-                self.bilateral_filter.apply(image_np)
+                image_np
+                # self.bilateral_filter.apply(image_np)
             )
         )

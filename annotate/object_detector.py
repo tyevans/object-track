@@ -15,9 +15,10 @@ from annotate.annotation import Annotation, MaskedAnnotation
 
 class ObjectDetector:
     _tensor_dict = None
-    default_shape = (640, 480)
 
-    def __init__(self, graph_pb_file, label_file, num_classes):
+    def __init__(self, width, height, graph_pb_file, label_file, num_classes):
+        self.width = width
+        self.height = height
         self.graph_pb_file = graph_pb_file
         self.label_file = label_file
         self.num_classes = num_classes
@@ -33,6 +34,8 @@ class ObjectDetector:
                 od_graph_def.ParseFromString(serialized_graph)
                 tf.import_graph_def(od_graph_def, name='')
 
+            ops = self.detection_graph.get_operations()
+            self.has_masks = any(output.name == 'detection_masks:0' for op in ops for output in op.outputs)
             self.session = tf.Session()
 
     @classmethod
@@ -45,26 +48,21 @@ class ObjectDetector:
     def tensor_dict(self):
         if self._tensor_dict is None:
             graph = self.detection_graph
-
-            ops = graph.get_operations()
-            all_tensor_names = {output.name for op in ops for output in op.outputs}
             self._tensor_dict = {}
-            for key in [
-                'num_detections', 'detection_boxes', 'detection_scores',
-                'detection_classes', 'detection_masks'
-            ]:
-                tensor_name = key + ':0'
-                if tensor_name in all_tensor_names:
-                    self._tensor_dict[key] = tf.get_default_graph().get_tensor_by_name(tensor_name)
-            if 'detection_masks' in self._tensor_dict:
-                # The following processing is only for single image
+            self._tensor_dict['num_detections'] = graph.get_tensor_by_name('num_detections:0')
+            self._tensor_dict['detection_boxes'] = graph.get_tensor_by_name('detection_boxes:0')
+            self._tensor_dict['detection_scores'] = graph.get_tensor_by_name('detection_scores:0')
+            self._tensor_dict['detection_classes'] = graph.get_tensor_by_name('detection_classes:0')
+            if self.has_masks:
                 detection_boxes = tf.squeeze(self._tensor_dict['detection_boxes'], [0])
-                detection_masks = tf.squeeze(self._tensor_dict['detection_masks'], [0])
+                detection_masks = graph.get_tensor_by_name('detection_masks:0')
+                # The following processing is only for single image
+                detection_masks = tf.squeeze(detection_masks, [0])
                 # Reframe is required to translate mask from box coordinates to image coordinates and fit the image size.
                 real_num_detection = tf.cast(self._tensor_dict['num_detections'][0], tf.int32)
                 detection_boxes = tf.slice(detection_boxes, [0, 0], [real_num_detection, -1])
                 detection_masks = tf.slice(detection_masks, [0, 0, 0], [real_num_detection, -1, -1])
-                detection_masks_reframed = utils_ops.reframe_box_masks_to_image_masks(detection_masks, detection_boxes, self.default_shape[1], self.default_shape[0])
+                detection_masks_reframed = utils_ops.reframe_box_masks_to_image_masks(detection_masks, detection_boxes, self.height, self.width)
                 detection_masks_reframed = tf.cast(tf.greater(detection_masks_reframed, 0.5), tf.uint8)
                 # Follow the convention by adding back the batch dimension
                 self._tensor_dict['detection_masks'] = tf.expand_dims(detection_masks_reframed, 0)
@@ -99,7 +97,7 @@ class ObjectDetector:
 
 class AnnotationProcessor(Process):
 
-    def __init__(self, graph_file: str, label_file: str, num_classes: int, recv_frame: Pipe, send_anno: Pipe,
+    def __init__(self, width, height, graph_file: str, label_file: str, num_classes: int, recv_frame: Pipe, send_anno: Pipe,
                  min_confidence: float = 0.5):
         """ Dedicated image annotating process.  Sits off to the side
 
@@ -112,6 +110,8 @@ class AnnotationProcessor(Process):
         :param annotation_queue: (multiprocessing.Queue) queue where annotations will be returned
         """
         super(AnnotationProcessor, self).__init__()
+        self.width = width
+        self.height = height
         self.graph_file = graph_file
         self.label_file = label_file
         self.num_classes = num_classes
@@ -121,7 +121,7 @@ class AnnotationProcessor(Process):
 
     def run(self):
         # Create our object detector
-        detector = ObjectDetector(self.graph_file, self.label_file, self.num_classes)
+        detector = ObjectDetector(self.width, self.height, self.graph_file, self.label_file, self.num_classes)
 
         while True:
             # Get the next available frame

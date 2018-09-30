@@ -41,11 +41,12 @@ class Quantize(ImageHandler):
         # then create the quantized image based on the predictions
         if self.intialized:
             labels = self.clt.predict(image)
-            quant = self.clt.cluster_centers_.astype("uint8")[labels]
+            quant = self._clusters_centers[labels]
         else:
             self.intialized = True
             labels = self.clt.fit_predict(image)
-            quant = self.clt.cluster_centers_.astype("uint8")[labels]
+            self._clusters_centers = self.clt.cluster_centers_.astype("uint8")
+            quant = self._clusters_centers[labels]
 
         # reshape the feature vectors to images
         quant = quant.reshape((h, w, 3))

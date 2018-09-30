@@ -8,7 +8,9 @@ from annotate.object_detector import AnnotationProcessor
 
 class VideoAnnotator(object):
 
-    def __init__(self, graph: str, label_file: str, num_classes: int, min_confidence: float = 0.5, sample_delay=30):
+    def __init__(self, width, height, graph: str, label_file: str, num_classes: int, min_confidence: float = 0.5, sample_delay=30):
+        self.width = width
+        self.height = height
         self.min_confidence = min_confidence
         self.annotations = []
 
@@ -19,7 +21,7 @@ class VideoAnnotator(object):
 
         self.send_frame, self.recv_frame = Pipe()
         self.send_anno, self.recv_anno = Pipe()
-        self.processor = AnnotationProcessor(graph, label_file, num_classes, self.recv_frame,
+        self.processor = AnnotationProcessor(width, height, graph, label_file, num_classes, self.recv_frame,
                                              self.send_anno, min_confidence=min_confidence)
         self.processor.start()
 

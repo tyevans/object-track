@@ -52,5 +52,5 @@ class FrameAverager(ImageHandler):
     def apply(self, image_np):
         self.frame_stack[self.frame_index] = image_np
         self.frame_index = (self.frame_index + 1) % self.history
-        avg = np.mean(self.frame_stack, axis=0)
+        avg = np.average(self.frame_stack, axis=0)
         return avg.astype(np.uint8)
