@@ -21,7 +21,7 @@ class Annotation(object):
             lineType = 1
             padding = 5
             d_padding = padding * 2
-            label = "{} ({:.2f})".format(self.label['name'], self.score)
+            label = "{} ({:.2f})".format(self.label['display_name'], self.score)
             text_dims, _ = cv2.getTextSize(label, font, fontScale, lineType)
             text_width, text_height = text_dims
             x = int(self.rect.x1 * width)

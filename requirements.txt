@@ -1,0 +1,9 @@
+numpy
+tensorflow
+opencv-python
+opencv-contrib-python
+requests
+django
+scipy
+protobuf
+scikit-learn

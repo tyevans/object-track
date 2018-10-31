@@ -3,13 +3,9 @@ import argparse
 import cv2
 
 from image_handlers import VideoDisplay
-from image_handlers.annotation import Annotator, TrackingSuprise, MaskingAnnotator
+from image_handlers.annotation import MaskingAnnotator, TrackingAnnotator, TrackingSuprise, AnnotationGridWall
 from image_handlers.avi import AVIOutput
-from image_handlers.background import FrameAverager
-from image_handlers.color import BilateralFilter
 from image_handlers.creative import Cartoonify
-from image_handlers.denoise import Denoise
-from image_handlers.edge_detect import Laplacian
 from image_handlers.fps import FPSCounter
 
 
@@ -61,13 +57,14 @@ if __name__ == "__main__":
     options = get_options()
 
     pipeline = [
-        MaskingAnnotator(options.graph, options.label_file, options.num_classes,
-                               min_confidence=options.min_confidence, sample_delay=0, width=options.i_width, height=options.i_height)
-        # Denoise(),
-        #Cartoonify(2),
-        # Laplacian(),
-        # BilateralFilter()
-#        FrameAverager(options.i_width, options.i_height, history=30)
+        AnnotationGridWall(options.graph, options.label_file, options.num_classes,
+                           min_confidence=options.min_confidence,
+                           sample_delay=0,
+                           width=options.i_width,
+                           height=options.i_height,
+                           overlay_time=0,
+                           )
+
     ]
 
     if options.show_fps:
@@ -85,8 +82,6 @@ if __name__ == "__main__":
             cv2.CAP_PROP_FRAME_HEIGHT: options.i_height,
             cv2.CAP_PROP_AUTO_EXPOSURE: 1,
             cv2.CAP_PROP_AUTOFOCUS: 1,
-            # cv2.CAP_PROP_BRIGHTNESS: 0.5,
-            # cv2.CAP_PROP_CONTRAST: 0.5,
         }
     )
     source.run_forever()
